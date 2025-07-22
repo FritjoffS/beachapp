@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="sv">
 <head>
   <meta charset="UTF-8" />
-  <title>🏐 Beach Volleyball Manager - Individual Player Results</title>
+  <title>🏐 Bjarke Beach Turnering</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body { font-family: sans-serif; background: #f0f0f0; margin: 0; }
@@ -12,316 +12,287 @@
     input, button, select {
       width: 100%; padding: 0.6rem; margin: 0.3rem 0; font-size: 1rem; box-sizing: border-box;
     }
-    button { border: none; cursor: pointer; padding: 0.4rem 0.8rem; font-size: 0.9rem; border-radius: 4px; }
-    button.win { background-color: #4caf50; color: white; }
-    button.lose { background-color: #f44336; color: white; }
-    button.draw { background-color: #ff9800; color: white; }
+    button {
+      border: none; cursor: pointer; padding: 0.4rem 0.8rem;
+      font-size: 0.9rem; border-radius: 4px; background-color: #009688; color: white;
+    }
+    button:hover { opacity: 0.95; }
+
+    button.vinst { background-color: #4caf50; }
+    button.förlust { background-color: #f44336; }
+    button.oavgjort { background-color: #ff9800; }
     button.result-selected { outline: 2px solid #000; }
+
     .player-result-row {
       display: flex; align-items: center; margin-bottom: 8px; justify-content: space-between;
     }
     .player-name {
-      flex-grow: 1;
-      font-weight: 600;
-      padding-right: 1rem;
+      flex-grow: 1; font-weight: 600; padding-right: 1rem;
     }
-    #saveMatchBtn {
-      background: #009688;
-      color: white;
-      margin-top: 1rem;
-    }
+
+    .remove-btn { color: red; cursor: pointer; margin-left: 8px; }
+    #saveMatchBtn { margin-top: 1rem; }
+
     #playerStats li {
       padding: 0.3rem 0;
-    }
-    .remove-btn {
-      color: red;
-      cursor: pointer;
-      margin-left: 8px;
     }
   </style>
 </head>
 <body>
+  <header>🏐 Bjarke Beach Turnering</header>
 
-<header>🏐 Beach Volleyball Tournament Manager</header>
+  <main>
+    <h2>0. Välj / Skapa Turnering</h2>
+    <input type="text" id="tournamentInput" placeholder="t.ex. sommar2025_01" />
+    <button onclick="loadTournament()">Ladda turnering</button>
+    <p id="tournamentStatus"></p>
 
-<main>
-  <h2>0. Select / Create Tournament</h2>
-  <input type="text" id="tournamentInput" placeholder="e.g. summer2025_01" />
-  <button onclick="loadTournament()">Load Tournament</button>
-  <p id="tournamentStatus"></p>
+    <h2>1. Lägg till spelare</h2>
+    <input type="text" id="playerName" placeholder="Spelarnamn" />
+    <button onclick="addPlayer()">Lägg till spelare</button>
+    <ul id="playerList"></ul>
 
-  <h2>1. Add Players</h2>
-  <input type="text" id="playerName" placeholder="Player name" />
-  <button onclick="addPlayer()">Add Player</button>
-  <ul id="playerList"></ul>
+    <h2>2. Nästa match</h2>
+    <button onclick="generateNextRound()">👥 Välj 8 spelare till nästa match</button>
+    <div id="currentRound"></div>
 
-  <h2>2. Next Round</h2>
-  <button onclick="generateNextRound()">👥 Pick 8 Players for Next Match</button>
-  <div id="currentRound"></div>
+    <h2>3. Registrera resultat (per spelare)</h2>
+    <div id="playerMatchList"></div>
+    <button id="saveMatchBtn" onclick="saveMatchResult()" disabled>Spara matchresultat</button>
 
-  <h2>3. Enter Player Results</h2>
-  <div id="playerMatchList"></div>
-  <button id="saveMatchBtn" onclick="saveMatchResult()" disabled>Save Match Result</button>
+    <h2>4. Spelarstatistik</h2>
+    <ul id="playerStats"></ul>
+  </main>
 
-  <h2>4. Player Stats</h2>
-  <ul id="playerStats"></ul>
-</main>
+  <!-- Firebase v8 SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
-<!-- Firebase v8 SDK -->
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyACiD-vKZ0Jbe_8g7TPmuIOcep_yFERumU",
+      authDomain: "bjarkebeach.firebaseapp.com",
+      databaseURL: "https://bjarkebeach-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "bjarkebeach",
+      storageBucket: "bjarkebeach.firebasestorage.app",
+      messagingSenderId: "8479008352",
+      appId: "1:8479008352:web:4f7e2d6e758d2c7867c505"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
 
-<script>
-  // Firebase config
-  const firebaseConfig = {
-    apiKey: "AIzaSyACiD-vKZ0Jbe_8g7TPmuIOcep_yFERumU",
-    authDomain: "bjarkebeach.firebaseapp.com",
-    databaseURL: "https://bjarkebeach-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "bjarkebeach",
-    storageBucket: "bjarkebeach.firebasestorage.app",
-    messagingSenderId: "8479008352",
-    appId: "1:8479008352:web:4f7e2d6e758d2c7867c505",
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+    let currentTournamentId = null;
+    let players = [];
+    let matchHistory = [];
+    let currentPlayers = null;
+    let playerResults = {};
+    let roundNumber = 0;
 
-  let currentTournamentId = null;
-  let players = [];
-  let matchHistory = [];
-  let currentPlayers = null; // players selected for this round
-  let roundNumber = 0;
+    function loadTournament() {
+      const id = document.getElementById("tournamentInput").value.trim();
+      if (!id) return alert("Skriv ett turnerings-ID.");
+      currentTournamentId = id;
+      document.getElementById("tournamentStatus").textContent = "Laddar " + id + "...";
 
-  // Map playerId -> result for current match (win/lose/draw)
-  let playerResults = {};
+      const base = db.ref("tournaments/" + currentTournamentId);
 
-  // Load tournament data (players, matches)
-  function loadTournament() {
-    const id = document.getElementById("tournamentInput").value.trim();
-    if (!id) return alert("Enter a tournament ID.");
-    currentTournamentId = id;
-    document.getElementById("tournamentStatus").textContent = "Loading tournament: " + id + "...";
-
-    const base = db.ref("tournaments/" + currentTournamentId);
-
-    base.child("players").once("value").then(snapshot => {
-      players = snapshot.val() || [];
-      players.forEach(p => {
-        p.matches = p.matches || 0;
-        p.wins = p.wins || 0;
-        p.losses = p.losses || 0;
-        p.draws = p.draws || 0;
+      base.child("players").once("value").then(snap => {
+        players = snap.val() || [];
+        players.forEach(p => {
+          p.matches = p.matches || 0;
+          p.wins = p.wins || 0;
+          p.losses = p.losses || 0;
+          p.draws = p.draws || 0;
+        });
+        renderPlayers();
+        updateStats();
       });
+
+      base.child("matches").once("value").then(snap => {
+        matchHistory = snap.val() || [];
+        roundNumber = matchHistory.length;
+      });
+
+      document.getElementById("tournamentStatus").textContent = "✅ Aktiv turnering: " + id;
+      clearCurrentRound();
+    }
+
+    function savePlayers() {
+      if (!currentTournamentId) return;
+      db.ref("tournaments/" + currentTournamentId + "/players").set(players);
+    }
+
+    function saveMatches() {
+      if (!currentTournamentId) return;
+      db.ref("tournaments/" + currentTournamentId + "/matches").set(matchHistory);
+    }
+
+    function addPlayer() {
+      if (!currentTournamentId) return alert("Välj en turnering först.");
+      const name = document.getElementById("playerName").value.trim();
+      if (!name) return alert("Skriv ett spelarnamn.");
+      if (players.find(p => p.name.toLowerCase() === name.toLowerCase()))
+        return alert("Spelaren finns redan.");
+      const id = Date.now().toString(36) + Math.random().toString(36).substr(2,6);
+      players.push({ id, name, matches: 0, wins: 0, losses: 0, draws: 0 });
+      document.getElementById("playerName").value = "";
+      savePlayers();
       renderPlayers();
       updateStats();
-    });
+    }
 
-    base.child("matches").once("value").then(snapshot => {
-      matchHistory = snapshot.val() || [];
-      roundNumber = matchHistory.length;
-    });
+    function deletePlayer(id) {
+      if (!confirm("Ta bort spelaren? Allt nollställs.")) return;
+      players = players.filter(p => p.id !== id);
+      matchHistory = [];
+      roundNumber = 0;
+      players.forEach(p => {
+        p.matches = 0;
+        p.wins = 0;
+        p.losses = 0;
+        p.draws = 0;
+      });
+      savePlayers();
+      saveMatches();
+      renderPlayers();
+      updateStats();
+      clearCurrentRound();
+    }
 
-    document.getElementById("tournamentStatus").textContent = "✅ Active Tournament: " + id;
-    clearCurrentRound();
-  }
+    function renderPlayers() {
+      const ul = document.getElementById("playerList");
+      ul.innerHTML = "";
+      players.forEach(p => {
+        const li = document.createElement("li");
+        li.textContent = `${p.name} (M: ${p.matches}, V: ${p.wins}, F: ${p.losses}, O: ${p.draws})`;
+        const del = document.createElement("span");
+        del.textContent = "🗑️";
+        del.className = "remove-btn";
+        del.onclick = () => deletePlayer(p.id);
+        li.appendChild(del);
+        ul.appendChild(li);
+      });
+    }
 
-  function savePlayers() {
-    if (!currentTournamentId) return;
-    db.ref("tournaments/" + currentTournamentId + "/players").set(players);
-  }
+    function updateStats() {
+      const ul = document.getElementById("playerStats");
+      ul.innerHTML = "";
+      const standby = {};
+      players.forEach(p => standby[p.id] = 0);
 
-  function saveMatches() {
-    if (!currentTournamentId) return;
-    db.ref("tournaments/" + currentTournamentId + "/matches").set(matchHistory);
-  }
+      matchHistory.forEach(match => {
+        if (match.standingOver) {
+          match.standingOver.forEach(p => {
+            standby[p.id] = (standby[p.id] || 0) + 1;
+          });
+        }
+      });
 
-  function addPlayer() {
-    if (!currentTournamentId) return alert("Select a tournament first.");
-    const nameInput = document.getElementById("playerName");
-    const name = nameInput.value.trim();
-    if (!name) return alert("Enter a player name.");
-    if (players.find(p => p.name.toLowerCase() === name.toLowerCase()))
-      return alert("Player already exists.");
-    const id = Date.now().toString(36) + Math.random().toString(36).substring(2,6);
-    players.push({ id, name, matches:0, wins:0, losses:0, draws:0 });
-    nameInput.value = "";
-    savePlayers();
-    renderPlayers();
-    updateStats();
-  }
+      players.forEach(p => {
+        const li = document.createElement("li");
+        li.textContent = `${p.name} — Matcher: ${p.matches}, V: ${p.wins}, F: ${p.losses}, O: ${p.draws}, Pausat: ${standby[p.id] || 0}`;
+        ul.appendChild(li);
+      });
+    }
 
-  function deletePlayer(id) {
-    if (!confirm("Delete player and reset match history?")) return;
-    players = players.filter(p => p.id !== id);
-    matchHistory = [];
-    roundNumber = 0;
-    players.forEach(p => { p.matches = 0; p.wins=0; p.losses=0; p.draws=0; });
-    savePlayers();
-    saveMatches();
-    renderPlayers();
-    updateStats();
-    clearCurrentRound();
-    clearPlayerResults();
-  }
-
-  function renderPlayers() {
-    const ul = document.getElementById("playerList");
-    ul.innerHTML = "";
-    players.forEach(p => {
-      const li = document.createElement("li");
-      li.textContent = `${p.name} (M: ${p.matches}, W: ${p.wins}, L: ${p.losses}, D: ${p.draws})`;
-      const del = document.createElement("span");
-      del.textContent = "🗑️";
-      del.className = "remove-btn";
-      del.onclick = () => deletePlayer(p.id);
-      li.appendChild(del);
-      ul.appendChild(li);
-    });
-  }
-
-  function updateStats() {
-    const ul = document.getElementById("playerStats");
-    ul.innerHTML = "";
-    const standOverCount = {};
-    players.forEach(p => standOverCount[p.id] = 0);
-    matchHistory.forEach(match => {
-      if (match.standingOver) {
-        match.standingOver.forEach(p => {
-          standOverCount[p.id] = (standOverCount[p.id] || 0) + 1;
-        });
+    function shuffle(arr) {
+      let a = arr.slice();
+      for (let i = a.length -1; i > 0; i--) {
+        const j = Math.floor(Math.random()*(i+1));
+        [a[i], a[j]] = [a[j], a[i]];
       }
-    });
-    players.forEach(p => {
-      const li = document.createElement("li");
-      li.textContent = `${p.name} — Matches: ${p.matches}, Wins: ${p.wins}, Losses: ${p.losses}, Draws: ${p.draws}, Standed Over: ${standOverCount[p.id] || 0}`;
-      ul.appendChild(li);
-    });
-  }
-
-  function shuffle(arr) {
-    let array = arr.slice();
-    for(let i = array.length -1; i > 0; i--) {
-      const j = Math.floor(Math.random()*(i+1));
-      [array[i], array[j]] = [array[j], array[i]];
+      return a;
     }
-    return array;
-  }
 
-  function generateNextRound() {
-    if (!currentTournamentId) return alert("Select a tournament first.");
-    if (players.length < 8) return alert("At least 8 players required.");
-    const sorted = shuffle(players).sort((a,b) => a.matches - b.matches);
-    const playing = sorted.slice(0,8);
-    const standingOver = sorted.slice(8);
-    currentPlayers = { playing, standingOver, roundNum: roundNumber+1 };
-    renderCurrentRound();
-    renderPlayerResultsInput();
-  }
-
-  function renderCurrentRound() {
-    const div = document.getElementById("currentRound");
-    if(!currentPlayers) {
-      div.innerHTML = "<p>No lineup. Click 'Pick 8 Players' to begin.</p>";
-      return;
+    function generateNextRound() {
+      if (!currentTournamentId) return alert("Välj en turnering.");
+      if (players.length < 8) return alert("Minst 8 spelare krävs.");
+      const sorted = shuffle(players).sort((a,b) => a.matches - b.matches);
+      currentPlayers = {
+        playing: sorted.slice(0,8),
+        standingOver: sorted.slice(8),
+        roundNum: roundNumber + 1
+      };
+      renderCurrentRound();
+      renderPlayerResultButtons();
     }
-    div.innerHTML = `<div class="match-box">
-      <strong>Round ${currentPlayers.roundNum}</strong><br>
-      <b>Playing:</b><br>
-      <ul style="padding-left:20px; margin:0;">${currentPlayers.playing.map(p => `<li>${p.name}</li>`).join('')}</ul>
-      ${currentPlayers.standingOver.length > 0 ? `<b>Standing Over:</b> ${currentPlayers.standingOver.map(p=>p.name).join(", ")}` : ''}
-    </div>`;
-  }
 
-  // Renders player list vertically with Win/Lose/Draw buttons per player
-  function renderPlayerResultsInput() {
-    const container = document.getElementById("playerMatchList");
-    container.innerHTML = "";
-    playerResults = {};
-    currentPlayers.playing.forEach(p => {
-      playerResults[p.id] = null; // no result assigned yet
-      const div = document.createElement("div");
-      div.className = "player-result-row";
+    function renderCurrentRound() {
+      const div = document.getElementById("currentRound");
+      if (!currentPlayers) {
+        div.innerHTML = "<p>Ingen match schemalagd.</p>";
+        return;
+      }
       div.innerHTML = `
-        <div class="player-name">${p.name}</div>
-        <button class="win" onclick="setPlayerResult('${p.id}', 'win', this)">Win</button>
-        <button class="lose" onclick="setPlayerResult('${p.id}', 'lose', this)">Lose</button>
-        <button class="draw" onclick="setPlayerResult('${p.id}', 'draw', this)">Draw</button>
-      `;
-      container.appendChild(div);
-    });
-    updateSaveButtonState();
-  }
-
-  // Handler to set individual player result and toggle selected button style
-  function setPlayerResult(playerId, result, btn) {
-    playerResults[playerId] = result;
-    // Remove selected style from this player's buttons, add only to clicked
-    const container = btn.parentNode;
-    Array.from(container.querySelectorAll("button")).forEach(b => b.classList.remove("result-selected"));
-    btn.classList.add("result-selected");
-    updateSaveButtonState();
-  }
-
-  function updateSaveButtonState() {
-    const saveBtn = document.getElementById("saveMatchBtn");
-    const allSet = currentPlayers && currentPlayers.playing.every(p => playerResults[p.id] !== null);
-    saveBtn.disabled = !allSet;
-  }
-
-  function saveMatchResult() {
-    if(!currentPlayers) return alert("Generate next round first.");
-    // Verify all players have results
-    if(!currentPlayers.playing.every(p => playerResults[p.id] !== null)) {
-      return alert("Please assign results for all players.");
+        <div class="match-box">
+          <strong>Match ${currentPlayers.roundNum}</strong><br>
+          <b>Spelar:</b><ul style="padding-left:20px">${currentPlayers.playing.map(p => `<li>${p.name}</li>`).join('')}</ul>
+          ${currentPlayers.standingOver.length ? `<b>Paus:</b> ${currentPlayers.standingOver.map(p => p.name).join(', ')}` : ''}
+        </div>`;
     }
 
-    // Save the full match record including individual player results
-    matchHistory.push({
-      round: currentPlayers.roundNum,
-      players: currentPlayers.playing.map(p => ({
-        id: p.id,
-        name: p.name,
-        result: playerResults[p.id]
-      })),
-      standingOver: currentPlayers.standingOver.map(p => ({ id: p.id, name: p.name })),
-      timestamp: new Date().toISOString()
-    });
+    function renderPlayerResultButtons() {
+      const container = document.getElementById("playerMatchList");
+      container.innerHTML = "";
+      playerResults = {};
+      currentPlayers.playing.forEach(p => {
+        playerResults[p.id] = null;
+        const row = document.createElement("div");
+        row.className = "player-result-row";
+        row.innerHTML = `
+          <div class="player-name">${p.name}</div>
+          <button class="vinst" onclick="setPlayerResult('${p.id}', 'win', this)">Vinst</button>
+          <button class="förlust" onclick="setPlayerResult('${p.id}', 'lose', this)">Förlust</button>
+          <button class="oavgjort" onclick="setPlayerResult('${p.id}', 'draw', this)">Oavgjort</button>
+        `;
+        container.appendChild(row);
+      });
+      updateSaveButtonState();
+    }
 
-    // Update player stats accordingly
-    currentPlayers.playing.forEach(p => {
-      const pl = players.find(x => x.id === p.id);
-      if(pl) {
-        pl.matches = (pl.matches || 0) + 1;
-        if(playerResults[p.id] === 'win') pl.wins = (pl.wins || 0) + 1;
-        else if(playerResults[p.id] === 'lose') pl.losses = (pl.losses || 0) + 1;
-        else if(playerResults[p.id] === 'draw') pl.draws = (pl.draws || 0) + 1;
-      }
-    });
+    function setPlayerResult(id, value, btn) {
+      playerResults[id] = value;
+      const container = btn.parentNode;
+      Array.from(container.querySelectorAll("button")).forEach(b => b.classList.remove("result-selected"));
+      btn.classList.add("result-selected");
+      updateSaveButtonState();
+    }
 
-    roundNumber++;
-    savePlayers();
-    saveMatches();
-    renderPlayers();
-    updateStats();
-    clearCurrentRound();
-    clearPlayerResults();
+    function updateSaveButtonState() {
+      document.getElementById("saveMatchBtn").disabled =
+        !currentPlayers || !currentPlayers.playing.every(p => playerResults[p.id]);
+    }
 
-    alert("Saved player results for round " + (roundNumber) + ".");
-  }
+    function saveMatchResult() {
+      matchHistory.push({
+        round: currentPlayers.roundNum,
+        players: currentPlayers.playing.map(p => ({
+          id: p.id, name: p.name, result: playerResults[p.id]
+        })),
+        standingOver: currentPlayers.standingOver.map(p => ({ id: p.id, name: p.name })),
+        timestamp: new Date().toISOString()
+      });
 
-  function clearCurrentRound() {
-    currentPlayers = null;
-    document.getElementById("currentRound").innerHTML = "<p>No active round.</p>";
-    clearPlayerResults();
-  }
+      currentPlayers.playing.forEach(p => {
+        const pl = players.find(pl => pl.id === p.id);
+        pl.matches++;
+        if (playerResults[p.id] === 'win') pl.wins++;
+        else if (playerResults[p.id] === 'lose') pl.losses++;
+        else if (playerResults[p.id] === 'draw') pl.draws++;
+      });
 
-  function clearPlayerResults() {
-    document.getElementById("playerMatchList").innerHTML = "";
-    document.getElementById("saveMatchBtn").disabled = true;
-    playerResults = {};
-  }
-
-  clearCurrentRound();
-</script>
-
+      savePlayers();
+      saveMatches();
+      roundNumber++;
+      currentPlayers = null;
+      playerResults = {};
+      document.getElementById("currentRound").innerHTML = "<p>Match sparad.</p>";
+      document.getElementById("playerMatchList").innerHTML = "";
+      document.getElementById("saveMatchBtn").disabled = true;
+      renderPlayers();
+      updateStats();
+      alert("Matchresultat sparat.");
+    }
+  </script>
 </body>
 </html>
