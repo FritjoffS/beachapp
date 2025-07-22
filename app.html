@@ -2,50 +2,66 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Beach Volleyball Manager</title>
+  <title>🏐 Beach Volleyball Manager - Individual Player Results</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body { font-family: sans-serif; background: #f0f0f0; margin: 0; }
-    header { background: #009688; color: white; text-align: center; padding: 1rem; font-size: 1.5rem; }
+    header { background: #009688; color: white; padding: 1rem; text-align: center; font-size: 1.5rem; }
     main { max-width: 700px; margin: auto; padding: 1rem; background: #fff; }
     h2 { color: #009688; margin-top: 1.5rem; }
     input, button, select {
-      width: 100%; padding: 0.6rem; margin: 0.3rem 0;
-      font-size: 1rem; box-sizing: border-box;
+      width: 100%; padding: 0.6rem; margin: 0.3rem 0; font-size: 1rem; box-sizing: border-box;
     }
-    button { background: #009688; color: white; border: none; cursor: pointer; }
-    button:hover { opacity: 0.9; }
-    ul { list-style: none; padding: 0; }
-    li { padding: 0.3rem 0; display: flex; justify-content: space-between; }
-    .remove-btn { color: red; cursor: pointer; margin-left: 8px; }
-    .match-box { background: #e0f7fa; padding: 1rem; margin: 1rem 0; border-radius: 6px; }
+    button { border: none; cursor: pointer; padding: 0.4rem 0.8rem; font-size: 0.9rem; border-radius: 4px; }
+    button.win { background-color: #4caf50; color: white; }
+    button.lose { background-color: #f44336; color: white; }
+    button.draw { background-color: #ff9800; color: white; }
+    button.result-selected { outline: 2px solid #000; }
+    .player-result-row {
+      display: flex; align-items: center; margin-bottom: 8px; justify-content: space-between;
+    }
+    .player-name {
+      flex-grow: 1;
+      font-weight: 600;
+      padding-right: 1rem;
+    }
+    #saveMatchBtn {
+      background: #009688;
+      color: white;
+      margin-top: 1rem;
+    }
+    #playerStats li {
+      padding: 0.3rem 0;
+    }
+    .remove-btn {
+      color: red;
+      cursor: pointer;
+      margin-left: 8px;
+    }
   </style>
 </head>
 <body>
 
-<header>🏐 Beach Volleyball Match Manager</header>
+<header>🏐 Beach Volleyball Tournament Manager</header>
 
 <main>
+  <h2>0. Select / Create Tournament</h2>
+  <input type="text" id="tournamentInput" placeholder="e.g. summer2025_01" />
+  <button onclick="loadTournament()">Load Tournament</button>
+  <p id="tournamentStatus"></p>
+
   <h2>1. Add Players</h2>
   <input type="text" id="playerName" placeholder="Player name" />
   <button onclick="addPlayer()">Add Player</button>
   <ul id="playerList"></ul>
 
   <h2>2. Next Round</h2>
-  <button onclick="generateNextRound()">Show Players for Next Match (8 players)</button>
+  <button onclick="generateNextRound()">👥 Pick 8 Players for Next Match</button>
   <div id="currentRound"></div>
 
-  <h2>3. Enter Match Result</h2>
-  <form onsubmit="event.preventDefault(); saveMatchResult();">
-    <label for="winnerTeam">Who won?</label>
-    <select id="winnerTeam" required>
-      <option value="" disabled selected>Select winner</option>
-      <option value="team1">Team 1</option>
-      <option value="team2">Team 2</option>
-      <option value="draw">Draw</option>
-    </select>
-    <button type="submit">Save Result</button>
-  </form>
+  <h2>3. Enter Player Results</h2>
+  <div id="playerMatchList"></div>
+  <button id="saveMatchBtn" onclick="saveMatchResult()" disabled>Save Match Result</button>
 
   <h2>4. Player Stats</h2>
   <ul id="playerStats"></ul>
@@ -56,7 +72,7 @@
 <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
 <script>
-  // ✅ Firebase config
+  // Firebase config
   const firebaseConfig = {
     apiKey: "AIzaSyACiD-vKZ0Jbe_8g7TPmuIOcep_yFERumU",
     authDomain: "bjarkebeach.firebaseapp.com",
@@ -69,40 +85,64 @@
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
 
+  let currentTournamentId = null;
   let players = [];
   let matchHistory = [];
-  let currentPlayers = null;
+  let currentPlayers = null; // players selected for this round
   let roundNumber = 0;
 
-  window.onload = () => {
-    db.ref("players").once("value").then(snap => {
-      players = snap.val() || [];
-      players.forEach(p => { p.matches = p.matches || 0; });
+  // Map playerId -> result for current match (win/lose/draw)
+  let playerResults = {};
+
+  // Load tournament data (players, matches)
+  function loadTournament() {
+    const id = document.getElementById("tournamentInput").value.trim();
+    if (!id) return alert("Enter a tournament ID.");
+    currentTournamentId = id;
+    document.getElementById("tournamentStatus").textContent = "Loading tournament: " + id + "...";
+
+    const base = db.ref("tournaments/" + currentTournamentId);
+
+    base.child("players").once("value").then(snapshot => {
+      players = snapshot.val() || [];
+      players.forEach(p => {
+        p.matches = p.matches || 0;
+        p.wins = p.wins || 0;
+        p.losses = p.losses || 0;
+        p.draws = p.draws || 0;
+      });
       renderPlayers();
       updateStats();
     });
-    db.ref("matches").once("value").then(snap => {
-      matchHistory = snap.val() || [];
+
+    base.child("matches").once("value").then(snapshot => {
+      matchHistory = snapshot.val() || [];
       roundNumber = matchHistory.length;
     });
-  };
+
+    document.getElementById("tournamentStatus").textContent = "✅ Active Tournament: " + id;
+    clearCurrentRound();
+  }
 
   function savePlayers() {
-    db.ref("players").set(players);
+    if (!currentTournamentId) return;
+    db.ref("tournaments/" + currentTournamentId + "/players").set(players);
   }
 
   function saveMatches() {
-    db.ref("matches").set(matchHistory);
+    if (!currentTournamentId) return;
+    db.ref("tournaments/" + currentTournamentId + "/matches").set(matchHistory);
   }
 
   function addPlayer() {
+    if (!currentTournamentId) return alert("Select a tournament first.");
     const nameInput = document.getElementById("playerName");
     const name = nameInput.value.trim();
     if (!name) return alert("Enter a player name.");
     if (players.find(p => p.name.toLowerCase() === name.toLowerCase()))
-      return alert("This player already exists.");
-    const id = Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
-    players.push({ id, name, matches: 0 });
+      return alert("Player already exists.");
+    const id = Date.now().toString(36) + Math.random().toString(36).substring(2,6);
+    players.push({ id, name, matches:0, wins:0, losses:0, draws:0 });
     nameInput.value = "";
     savePlayers();
     renderPlayers();
@@ -110,16 +150,17 @@
   }
 
   function deletePlayer(id) {
-    if (!confirm("Are you sure? All stats will be cleared.")) return;
+    if (!confirm("Delete player and reset match history?")) return;
     players = players.filter(p => p.id !== id);
     matchHistory = [];
     roundNumber = 0;
-    players.forEach(p => p.matches = 0);
+    players.forEach(p => { p.matches = 0; p.wins=0; p.losses=0; p.draws=0; });
     savePlayers();
     saveMatches();
     renderPlayers();
     updateStats();
     clearCurrentRound();
+    clearPlayerResults();
   }
 
   function renderPlayers() {
@@ -127,7 +168,7 @@
     ul.innerHTML = "";
     players.forEach(p => {
       const li = document.createElement("li");
-      li.textContent = `${p.name} (${p.matches} matches)`;
+      li.textContent = `${p.name} (M: ${p.matches}, W: ${p.wins}, L: ${p.losses}, D: ${p.draws})`;
       const del = document.createElement("span");
       del.textContent = "🗑️";
       del.className = "remove-btn";
@@ -140,88 +181,143 @@
   function updateStats() {
     const ul = document.getElementById("playerStats");
     ul.innerHTML = "";
-    const standOversCount = {};
-    players.forEach(p => { standOversCount[p.id] = 0; });
-
+    const standOverCount = {};
+    players.forEach(p => standOverCount[p.id] = 0);
     matchHistory.forEach(match => {
       if (match.standingOver) {
         match.standingOver.forEach(p => {
-          standOversCount[p.id] = (standOversCount[p.id] || 0) + 1;
+          standOverCount[p.id] = (standOverCount[p.id] || 0) + 1;
         });
       }
     });
-
     players.forEach(p => {
       const li = document.createElement("li");
-      li.textContent = `${p.name} — Matches: ${p.matches} | Stood over: ${standOversCount[p.id] || 0}`;
+      li.textContent = `${p.name} — Matches: ${p.matches}, Wins: ${p.wins}, Losses: ${p.losses}, Draws: ${p.draws}, Standed Over: ${standOverCount[p.id] || 0}`;
       ul.appendChild(li);
     });
   }
 
   function shuffle(arr) {
     let array = arr.slice();
-    for (let i = array.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+    for(let i = array.length -1; i > 0; i--) {
+      const j = Math.floor(Math.random()*(i+1));
       [array[i], array[j]] = [array[j], array[i]];
     }
     return array;
   }
 
   function generateNextRound() {
+    if (!currentTournamentId) return alert("Select a tournament first.");
     if (players.length < 8) return alert("At least 8 players required.");
-    const sorted = shuffle(players).sort((a, b) => a.matches - b.matches);
-    const playing = sorted.slice(0, 8);
+    const sorted = shuffle(players).sort((a,b) => a.matches - b.matches);
+    const playing = sorted.slice(0,8);
     const standingOver = sorted.slice(8);
-    currentPlayers = {
-      playing,
-      standingOver,
-      roundNum: roundNumber + 1,
-    };
+    currentPlayers = { playing, standingOver, roundNum: roundNumber+1 };
     renderCurrentRound();
+    renderPlayerResultsInput();
   }
 
   function renderCurrentRound() {
     const div = document.getElementById("currentRound");
-    if (!currentPlayers) {
-      div.innerHTML = "<p>No lineup. Click 'Show Players for Next Match'.</p>";
+    if(!currentPlayers) {
+      div.innerHTML = "<p>No lineup. Click 'Pick 8 Players' to begin.</p>";
       return;
     }
-    div.innerHTML = `
-      <div class="match-box">
-        <strong>Round ${currentPlayers.roundNum}</strong><br>
-        <b>Playing:</b> ${currentPlayers.playing.map(p => p.name).join(", ")}<br>
-        ${currentPlayers.standingOver.length > 0 ? `<b>Standing Over:</b> ${currentPlayers.standingOver.map(p => p.name).join(", ")}` : ""}
-      </div>
-    `;
+    div.innerHTML = `<div class="match-box">
+      <strong>Round ${currentPlayers.roundNum}</strong><br>
+      <b>Playing:</b><br>
+      <ul style="padding-left:20px; margin:0;">${currentPlayers.playing.map(p => `<li>${p.name}</li>`).join('')}</ul>
+      ${currentPlayers.standingOver.length > 0 ? `<b>Standing Over:</b> ${currentPlayers.standingOver.map(p=>p.name).join(", ")}` : ''}
+    </div>`;
+  }
+
+  // Renders player list vertically with Win/Lose/Draw buttons per player
+  function renderPlayerResultsInput() {
+    const container = document.getElementById("playerMatchList");
+    container.innerHTML = "";
+    playerResults = {};
+    currentPlayers.playing.forEach(p => {
+      playerResults[p.id] = null; // no result assigned yet
+      const div = document.createElement("div");
+      div.className = "player-result-row";
+      div.innerHTML = `
+        <div class="player-name">${p.name}</div>
+        <button class="win" onclick="setPlayerResult('${p.id}', 'win', this)">Win</button>
+        <button class="lose" onclick="setPlayerResult('${p.id}', 'lose', this)">Lose</button>
+        <button class="draw" onclick="setPlayerResult('${p.id}', 'draw', this)">Draw</button>
+      `;
+      container.appendChild(div);
+    });
+    updateSaveButtonState();
+  }
+
+  // Handler to set individual player result and toggle selected button style
+  function setPlayerResult(playerId, result, btn) {
+    playerResults[playerId] = result;
+    // Remove selected style from this player's buttons, add only to clicked
+    const container = btn.parentNode;
+    Array.from(container.querySelectorAll("button")).forEach(b => b.classList.remove("result-selected"));
+    btn.classList.add("result-selected");
+    updateSaveButtonState();
+  }
+
+  function updateSaveButtonState() {
+    const saveBtn = document.getElementById("saveMatchBtn");
+    const allSet = currentPlayers && currentPlayers.playing.every(p => playerResults[p.id] !== null);
+    saveBtn.disabled = !allSet;
+  }
+
+  function saveMatchResult() {
+    if(!currentPlayers) return alert("Generate next round first.");
+    // Verify all players have results
+    if(!currentPlayers.playing.every(p => playerResults[p.id] !== null)) {
+      return alert("Please assign results for all players.");
+    }
+
+    // Save the full match record including individual player results
+    matchHistory.push({
+      round: currentPlayers.roundNum,
+      players: currentPlayers.playing.map(p => ({
+        id: p.id,
+        name: p.name,
+        result: playerResults[p.id]
+      })),
+      standingOver: currentPlayers.standingOver.map(p => ({ id: p.id, name: p.name })),
+      timestamp: new Date().toISOString()
+    });
+
+    // Update player stats accordingly
+    currentPlayers.playing.forEach(p => {
+      const pl = players.find(x => x.id === p.id);
+      if(pl) {
+        pl.matches = (pl.matches || 0) + 1;
+        if(playerResults[p.id] === 'win') pl.wins = (pl.wins || 0) + 1;
+        else if(playerResults[p.id] === 'lose') pl.losses = (pl.losses || 0) + 1;
+        else if(playerResults[p.id] === 'draw') pl.draws = (pl.draws || 0) + 1;
+      }
+    });
+
+    roundNumber++;
+    savePlayers();
+    saveMatches();
+    renderPlayers();
+    updateStats();
+    clearCurrentRound();
+    clearPlayerResults();
+
+    alert("Saved player results for round " + (roundNumber) + ".");
   }
 
   function clearCurrentRound() {
     currentPlayers = null;
     document.getElementById("currentRound").innerHTML = "<p>No active round.</p>";
-    document.getElementById("winnerTeam").value = "";
+    clearPlayerResults();
   }
 
-  function saveMatchResult() {
-    if (!currentPlayers) return alert("Generate next round first.");
-    const result = document.getElementById("winnerTeam").value;
-    if (!result) return alert("Select a result.");
-    matchHistory.push({
-      round: currentPlayers.roundNum,
-      players: currentPlayers.playing.map(p => ({ id: p.id, name: p.name })),
-      standingOver: currentPlayers.standingOver.map(p => ({ id: p.id, name: p.name })),
-      winner: result,
-      timestamp: new Date().toISOString()
-    });
-    currentPlayers.playing.forEach(p => {
-      const found = players.find(x => x.id === p.id);
-      if (found) found.matches = (found.matches || 0) + 1;
-    });
-    roundNumber++;
-    saveMatches();
-    savePlayers();
-    renderPlayers();
-    updateStats();
-    clearCurrentRound();
+  function clearPlayerResults() {
+    document.getElementById("playerMatchList").innerHTML = "";
+    document.getElementById("saveMatchBtn").disabled = true;
+    playerResults = {};
   }
 
   clearCurrentRound();
