@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <title>Logga in - Beach Volleyball</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: sans-serif; background: #e0f2f1; margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+    #loginContainer {
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      width: 320px;
+    }
+    h2 { text-align: center; color: #00796b; margin-bottom: 1.2rem; }
+    input, button {
+      width: 100%;
+      padding: 0.7rem;
+      margin: 0.5rem 0;
+      font-size: 1rem;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+    }
+    button {
+      background: #00796b;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #004d40;
+    }
+    #errorMessage {
+      color: #d32f2f;
+      margin-top: 0.5rem;
+      min-height: 1.2em;
+      text-align: center;
+      font-weight: 600;
+    }
+    #successMessage {
+      color: #388e3c;
+      margin-top: 0.5rem;
+      text-align: center;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+<div id="loginContainer">
+  <h2>Logga in eller Registrera</h2>
+  <input type="email" id="email" placeholder="Email" autocomplete="username" />
+  <input type="password" id="password" placeholder="Lösenord" autocomplete="current-password" />
+  <button onclick="signIn()">Logga in</button>
+  <button onclick="signUp()">Registrera ny användare</button>
+  <div id="errorMessage"></div>
+  <div id="successMessage"></div>
+</div>
+
+<!-- Firebase v8 SDK -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+
+<script>
+  // Your Firebase config here (use your existing config)
+  const firebaseConfig = {
+    apiKey: "AIzaSyACiD-vKZ0Jbe_8g7TPmuIOcep_yFERumU",
+    authDomain: "bjarkebeach.firebaseapp.com",
+    databaseURL: "https://bjarkebeach-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "bjarkebeach",
+    storageBucket: "bjarkebeach.firebasestorage.app",
+    messagingSenderId: "8479008352",
+    appId: "1:8479008352:web:4f7e2d6e758d2c7867c505"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+
+  const emailInput = document.getElementById("email");
+  const passwordInput = document.getElementById("password");
+  const errorMessage = document.getElementById("errorMessage");
+  const successMessage = document.getElementById("successMessage");
+
+  // Clear messages helper
+  function clearMessages() {
+    errorMessage.textContent = "";
+    successMessage.textContent = "";
+  }
+
+  // Sign up new user
+  function signUp() {
+    clearMessages();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!email || !password) {
+      errorMessage.textContent = "Ange e-post och lösenord";
+      return;
+    }
+    auth.createUserWithEmailAndPassword(email, password)
+      .then((userCredential) => {
+        successMessage.textContent = "Användare skapad och inloggad!";
+        console.log("Skapad användare:", userCredential.user);
+        redirectAfterLogin();
+      })
+      .catch((error) => {
+        errorMessage.textContent = error.message;
+      });
+  }
+
+  // Sign in existing user
+  function signIn() {
+    clearMessages();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    if (!email || !password) {
+      errorMessage.textContent = "Ange e-post och lösenord";
+      return;
+    }
+    auth.signInWithEmailAndPassword(email, password)
+      .then((userCredential) => {
+        successMessage.textContent = "Inloggad!";
+        console.log("Inloggad användare:", userCredential.user);
+        redirectAfterLogin();
+      })
+      .catch((error) => {
+        errorMessage.textContent = error.message;
+      });
+  }
+
+  // Redirect to your main app page after successful login
+  function redirectAfterLogin() {
+    setTimeout(() => {
+      window.location.href = "app.html"; // PUT your main app page filename here
+    }, 1000);
+  }
+
+  // Auto redirect if user already signed in
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      successMessage.textContent = `Välkommen tillbaka, ${user.email}!`;
+      redirectAfterLogin();
+    }
+  });
+</script>
+
+</body>
+</html>
