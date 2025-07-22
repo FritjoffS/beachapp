@@ -2,7 +2,7 @@
 <html lang="sv">
 <head>
   <meta charset="UTF-8" />
-  <title>🏐 Bjarke Beach Turnering</title>
+  <title>🏐 Bjärke Summer Tour</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body { font-family: sans-serif; background: #f0f0f0; margin: 0; }
@@ -39,28 +39,28 @@
   </style>
 </head>
 <body>
-  <header>🏐 Bjarke Beach Turnering</header>
+  <header>🏐 Bjärke Summer Tour</header>
 
   <main>
-    <h2>0. Välj / Skapa Turnering</h2>
+    <h2>Välj / Skapa Turnering</h2>
     <input type="text" id="tournamentInput" placeholder="t.ex. sommar2025_01" />
     <button onclick="loadTournament()">Ladda turnering</button>
     <p id="tournamentStatus"></p>
 
-    <h2>1. Lägg till spelare</h2>
+    <h2>Lägg till spelare</h2>
     <input type="text" id="playerName" placeholder="Spelarnamn" />
     <button onclick="addPlayer()">Lägg till spelare</button>
     <ul id="playerList"></ul>
 
-    <h2>2. Nästa match</h2>
+    <h2>Nästa match</h2>
     <button onclick="generateNextRound()">👥 Välj 8 spelare till nästa match</button>
     <div id="currentRound"></div>
 
-    <h2>3. Registrera resultat (per spelare)</h2>
+    <h2>Registrera resultat (per spelare)</h2>
     <div id="playerMatchList"></div>
     <button id="saveMatchBtn" onclick="saveMatchResult()" disabled>Spara matchresultat</button>
 
-    <h2>4. Spelarstatistik</h2>
+    <h2>Spelarstatistik</h2>
     <ul id="playerStats"></ul>
   </main>
 
