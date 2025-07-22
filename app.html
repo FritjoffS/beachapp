@@ -5,102 +5,64 @@
   <title>Beach Volleyball Tournament</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body {
-      font-family: sans-serif;
-      background: #f0f0f0;
-      margin: 0;
-      padding: 0;
-    }
-    header {
-      background-color: #009688;
-      color: white;
-      text-align: center;
-      padding: 1rem;
-      font-size: 1.5rem;
-    }
-    main {
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 1rem;
-      background: white;
-    }
-    h2 {
-      color: #009688;
-      margin-top: 2rem;
-    }
-    input, select, button {
-      padding: 0.5rem;
-      font-size: 1rem;
-      margin: 0.3rem 0;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    button {
-      background-color: #009688;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-    button:hover {
-      opacity: 0.9;
-    }
-    ul {
-      padding-left: 1rem;
-    }
-    .team-box {
-      background: #e0f2f1;
-      padding: 0.8rem;
-      margin: 0.5rem 0;
-      border-radius: 5px;
-    }
-    .ranking {
-      list-style: none;
-      padding: 0;
-    }
-    .ranking li {
-      padding: 0.4rem 0;
-      border-bottom: 1px solid #ddd;
-      display: flex;
-      justify-content: space-between;
-    }
-    .delete-btn {
-      margin-left: 10px;
-      color: red;
-      cursor: pointer;
-    }
+    body { font-family: sans-serif; background: #f0f0f0; margin: 0;}
+    header { background:#009688; color:#fff; padding:1rem;text-align:center;font-size:1.5rem;}
+    main { max-width:600px;margin:0 auto;padding:1rem;background:#fff;}
+    h2 { color:#009688;margin-top:2rem;}
+    input, select, button { padding:0.6rem;font-size:1rem;margin:.2rem 0 .5rem 0;width:100%;box-sizing:border-box;}
+    button {background:#009688;color:white;border:none;}
+    button:hover {opacity:.9;}
+    .ranking {list-style:none;padding:0;}
+    .ranking li {padding:.5rem 0;border-bottom:1px solid #ddd;display:flex;justify-content:space-between;}
+    .team-select-row {display: flex; gap: 8px;}
+    .team-select-row select { flex: 1 1 0%; }
+    .playerRemove {color:red;cursor:pointer;margin-left:8px;}
   </style>
 </head>
 <body>
   <header>🏐 Beach Volleyball Manager</header>
   <main>
-    <h2>1. Add Player</h2>
+    <h2>Add Player</h2>
     <input type="text" id="playerNameInput" placeholder="Player name">
     <button onclick="addPlayer()">Add Player</button>
     <ul id="playersList"></ul>
 
-    <h2>2. Randomize 2v2 Teams</h2>
-    <button onclick="generateTeams()">Generate Teams</button>
-    <div id="teamsOutput"></div>
-
-    <h2>3. Enter Match Result</h2>
-    <select id="matchResult">
-      <option value="">Select Result</option>
-      <option value="team1">Team 1 Wins</option>
-      <option value="team2">Team 2 Wins</option>
-      <option value="draw">Draw</option>
-    </select>
-    <button onclick="submitResult()">Submit Result</button>
+    <h2>Enter Match Result (Teams decided on court)</h2>
+    <form id="matchForm" onsubmit="event.preventDefault();submitResult();">
+      <div>
+        <label><b>Team 1:</b></label>
+        <div class="team-select-row">
+          <select id="team1p1"></select>
+          <select id="team1p2"></select>
+        </div>
+      </div>
+      <div>
+        <label><b>Team 2:</b></label>
+        <div class="team-select-row">
+          <select id="team2p1"></select>
+          <select id="team2p2"></select>
+        </div>
+      </div>
+      <div>
+        <label><b>Result:</b> </label>
+        <select id="matchResult">
+          <option value="">Select Result</option>
+          <option value="team1">Team 1 Wins</option>
+          <option value="team2">Team 2 Wins</option>
+          <option value="draw">Draw</option>
+        </select>
+      </div>
+      <button type="submit">Save Result</button>
+    </form>
 
     <h2>🏆 Standings</h2>
     <ul class="ranking" id="standingsList"></ul>
   </main>
-
-  <!-- ✅ Firebase v8 SDK -->
+  <!-- Firebase v8 CDN -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
-
   <script>
-    // ✅ Firebase config (from your question)
+    // Firebase config from previous code
     const firebaseConfig = {
       apiKey: "AIzaSyACiD-vKZ0Jbe_8g7TPmuIOcep_yFERumU",
       authDomain: "bjarkebeach.firebaseapp.com",
@@ -111,23 +73,19 @@
       appId: "1:8479008352:web:4f7e2d6e758d2c7867c505",
       measurementId: "G-G7MF0M1VST"
     };
-
-    // ✅ Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    // 🔒 App state
     let players = [];
     let standings = {};
-    let currentTeams = [];
 
-    // 🔃 Load data on page load
     window.onload = () => {
-      firebase.database().ref("players").once("value").then(snap => {
+      db.ref("players").once("value").then(snap => {
         players = snap.val() || [];
         updatePlayerList();
+        renderTeamSelects();
       });
-      firebase.database().ref("standings").once("value").then(snap => {
+      db.ref("standings").once("value").then(snap => {
         standings = snap.val() || {};
         updateStandings();
       });
@@ -141,11 +99,13 @@
     function addPlayer() {
       const name = document.getElementById("playerNameInput").value.trim();
       if (!name) return alert("Enter player name");
-      const id = Date.now().toString(36);
+      if (players.find(p=>p.name===name)) return alert("Player already exists");
+      const id = Date.now().toString(36)+Math.random().toString(36).substr(2,4);
       players.push({ id, name });
       standings[id] = { name, points: 0, matches: 0 };
       document.getElementById("playerNameInput").value = "";
       updatePlayerList();
+      renderTeamSelects();
       updateStandings();
       saveData();
     }
@@ -154,91 +114,80 @@
       players = players.filter(p => p.id !== id);
       delete standings[id];
       updatePlayerList();
+      renderTeamSelects();
       updateStandings();
       saveData();
     }
 
     function updatePlayerList() {
-      const list = document.getElementById("playersList");
-      list.innerHTML = "";
+      const ul = document.getElementById("playersList");
+      ul.innerHTML = "";
       players.forEach(p => {
         const li = document.createElement("li");
         li.textContent = p.name;
-        const del = document.createElement("span");
-        del.textContent = " 🗑️";
-        del.className = "delete-btn";
-        del.onclick = () => deletePlayer(p.id);
-        li.appendChild(del);
-        list.appendChild(li);
+        const span = document.createElement("span");
+        span.textContent = "🗑️";
+        span.className = "playerRemove";
+        span.onclick = ()=>deletePlayer(p.id);
+        li.appendChild(span);
+        ul.appendChild(li);
       });
     }
 
     function updateStandings() {
-      const list = document.getElementById("standingsList");
-      list.innerHTML = "";
+      const ul = document.getElementById("standingsList");
+      ul.innerHTML = "";
       const sorted = Object.entries(standings)
         .sort((a, b) => b[1].points - a[1].points);
       sorted.forEach(([id, s]) => {
         const li = document.createElement("li");
         li.innerHTML = `<strong>${s.name}</strong><span>${s.points} pts</span>`;
-        list.appendChild(li);
+        ul.appendChild(li);
       });
     }
 
-    function generateTeams() {
-      const shuffled = [...players];
-      shuffled.sort(() => Math.random() - 0.5);
-      currentTeams = [];
-
-      const teamsDiv = document.getElementById("teamsOutput");
-      teamsDiv.innerHTML = "";
-
-      for (let i = 0; i < shuffled.length - 3; i += 4) {
-        const team1 = [shuffled[i], shuffled[i+1]];
-        const team2 = [shuffled[i+2], shuffled[i+3]];
-        currentTeams.push({ team1, team2 });
-
-        const box = document.createElement("div");
-        box.classList.add("team-box");
-        box.innerHTML = `
-          <b>Team 1:</b> ${team1.map(p => p.name).join(" & ")}<br>
-          <b>Team 2:</b> ${team2.map(p => p.name).join(" & ")}
-        `;
-        teamsDiv.appendChild(box);
-      }
-
-      if (shuffled.length % 4 !== 0) {
-        const leftover = shuffled.slice(-(shuffled.length % 4));
-        teamsDiv.innerHTML += `<p>Left out: ${leftover.map(p => p.name).join(", ")}</p>`;
-      }
+    function renderTeamSelects() {
+      ["team1p1","team1p2","team2p1","team2p2"].forEach(selectId => {
+        const sel = document.getElementById(selectId);
+        sel.innerHTML = '<option value="">--</option>';
+        players.forEach(p=>{
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name;
+          sel.appendChild(opt);
+        });
+      });
     }
 
     function submitResult() {
+      const t1p1 = document.getElementById("team1p1").value;
+      const t1p2 = document.getElementById("team1p2").value;
+      const t2p1 = document.getElementById("team2p1").value;
+      const t2p2 = document.getElementById("team2p2").value;
       const result = document.getElementById("matchResult").value;
-      if (!result || currentTeams.length === 0) {
-        alert("Please select a result and generate teams.");
-        return;
-      }
 
-      const { team1, team2 } = currentTeams.shift();
+      // Basic validation: no repeated or missing players
+      const teamIds = [t1p1, t1p2, t2p1, t2p2];
+      if (teamIds.some(id=>!id)) return alert("Select all players for both teams.");
+      if (new Set(teamIds).size < 4) return alert("A player can't play on both teams.");
 
-      const team1points = result === "team1" ? 2 : result === "draw" ? 1 : 0;
-      const team2points = result === "team2" ? 2 : result === "draw" ? 1 : 0;
+      if (!result) return alert("Select result.");
 
-      team1.forEach(p => {
-        standings[p.id].points += team1points;
-        standings[p.id].matches++;
-      });
-      team2.forEach(p => {
-        standings[p.id].points += team2points;
-        standings[p.id].matches++;
-      });
+      let t1Points = 0, t2Points = 0;
+      if (result==="team1") { t1Points=2; t2Points=0; }
+      else if (result==="team2") { t1Points=0; t2Points=2; }
+      else if (result==="draw") { t1Points=t2Points=1; }
+
+      [t1p1,t1p2].forEach(id=>{ standings[id].points+=t1Points; standings[id].matches++; });
+      [t2p1,t2p2].forEach(id=>{ standings[id].points+=t2Points; standings[id].matches++; });
 
       updateStandings();
       saveData();
-      generateTeams();
-      document.getElementById("matchResult").value = "";
-      alert("Result saved! 🙌");
+
+      // Clear selections
+      ["team1p1","team1p2","team2p1","team2p2"].forEach(id=>document.getElementById(id).value="");
+      document.getElementById("matchResult").value="";
+      alert("Result saved!");
     }
   </script>
 </body>
