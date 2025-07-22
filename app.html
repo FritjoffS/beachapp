@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Beach Volleyball Tournament</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f0f0f0;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background-color: #009688;
+      color: white;
+      text-align: center;
+      padding: 1rem;
+      font-size: 1.5rem;
+    }
+    main {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 1rem;
+      background: white;
+    }
+    h2 {
+      color: #009688;
+      margin-top: 2rem;
+    }
+    input, select, button {
+      padding: 0.5rem;
+      font-size: 1rem;
+      margin: 0.3rem 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    button {
+      background-color: #009688;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    ul {
+      padding-left: 1rem;
+    }
+    .team-box {
+      background: #e0f2f1;
+      padding: 0.8rem;
+      margin: 0.5rem 0;
+      border-radius: 5px;
+    }
+    .ranking {
+      list-style: none;
+      padding: 0;
+    }
+    .ranking li {
+      padding: 0.4rem 0;
+      border-bottom: 1px solid #ddd;
+      display: flex;
+      justify-content: space-between;
+    }
+    .delete-btn {
+      margin-left: 10px;
+      color: red;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <header>🏐 Beach Volleyball Manager</header>
+  <main>
+    <h2>1. Add Player</h2>
+    <input type="text" id="playerNameInput" placeholder="Player name">
+    <button onclick="addPlayer()">Add Player</button>
+    <ul id="playersList"></ul>
+
+    <h2>2. Randomize 2v2 Teams</h2>
+    <button onclick="generateTeams()">Generate Teams</button>
+    <div id="teamsOutput"></div>
+
+    <h2>3. Enter Match Result</h2>
+    <select id="matchResult">
+      <option value="">Select Result</option>
+      <option value="team1">Team 1 Wins</option>
+      <option value="team2">Team 2 Wins</option>
+      <option value="draw">Draw</option>
+    </select>
+    <button onclick="submitResult()">Submit Result</button>
+
+    <h2>🏆 Standings</h2>
+    <ul class="ranking" id="standingsList"></ul>
+  </main>
+
+  <!-- ✅ Firebase v8 SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <script>
+    // ✅ Firebase config (from your question)
+    const firebaseConfig = {
+      apiKey: "AIzaSyACiD-vKZ0Jbe_8g7TPmuIOcep_yFERumU",
+      authDomain: "bjarkebeach.firebaseapp.com",
+      databaseURL: "https://bjarkebeach-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "bjarkebeach",
+      storageBucket: "bjarkebeach.firebasestorage.app",
+      messagingSenderId: "8479008352",
+      appId: "1:8479008352:web:4f7e2d6e758d2c7867c505",
+      measurementId: "G-G7MF0M1VST"
+    };
+
+    // ✅ Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // 🔒 App state
+    let players = [];
+    let standings = {};
+    let currentTeams = [];
+
+    // 🔃 Load data on page load
+    window.onload = () => {
+      firebase.database().ref("players").once("value").then(snap => {
+        players = snap.val() || [];
+        updatePlayerList();
+      });
+      firebase.database().ref("standings").once("value").then(snap => {
+        standings = snap.val() || {};
+        updateStandings();
+      });
+    };
+
+    function saveData() {
+      db.ref("players").set(players);
+      db.ref("standings").set(standings);
+    }
+
+    function addPlayer() {
+      const name = document.getElementById("playerNameInput").value.trim();
+      if (!name) return alert("Enter player name");
+      const id = Date.now().toString(36);
+      players.push({ id, name });
+      standings[id] = { name, points: 0, matches: 0 };
+      document.getElementById("playerNameInput").value = "";
+      updatePlayerList();
+      updateStandings();
+      saveData();
+    }
+
+    function deletePlayer(id) {
+      players = players.filter(p => p.id !== id);
+      delete standings[id];
+      updatePlayerList();
+      updateStandings();
+      saveData();
+    }
+
+    function updatePlayerList() {
+      const list = document.getElementById("playersList");
+      list.innerHTML = "";
+      players.forEach(p => {
+        const li = document.createElement("li");
+        li.textContent = p.name;
+        const del = document.createElement("span");
+        del.textContent = " 🗑️";
+        del.className = "delete-btn";
+        del.onclick = () => deletePlayer(p.id);
+        li.appendChild(del);
+        list.appendChild(li);
+      });
+    }
+
+    function updateStandings() {
+      const list = document.getElementById("standingsList");
+      list.innerHTML = "";
+      const sorted = Object.entries(standings)
+        .sort((a, b) => b[1].points - a[1].points);
+      sorted.forEach(([id, s]) => {
+        const li = document.createElement("li");
+        li.innerHTML = `<strong>${s.name}</strong><span>${s.points} pts</span>`;
+        list.appendChild(li);
+      });
+    }
+
+    function generateTeams() {
+      const shuffled = [...players];
+      shuffled.sort(() => Math.random() - 0.5);
+      currentTeams = [];
+
+      const teamsDiv = document.getElementById("teamsOutput");
+      teamsDiv.innerHTML = "";
+
+      for (let i = 0; i < shuffled.length - 3; i += 4) {
+        const team1 = [shuffled[i], shuffled[i+1]];
+        const team2 = [shuffled[i+2], shuffled[i+3]];
+        currentTeams.push({ team1, team2 });
+
+        const box = document.createElement("div");
+        box.classList.add("team-box");
+        box.innerHTML = `
+          <b>Team 1:</b> ${team1.map(p => p.name).join(" & ")}<br>
+          <b>Team 2:</b> ${team2.map(p => p.name).join(" & ")}
+        `;
+        teamsDiv.appendChild(box);
+      }
+
+      if (shuffled.length % 4 !== 0) {
+        const leftover = shuffled.slice(-(shuffled.length % 4));
+        teamsDiv.innerHTML += `<p>Left out: ${leftover.map(p => p.name).join(", ")}</p>`;
+      }
+    }
+
+    function submitResult() {
+      const result = document.getElementById("matchResult").value;
+      if (!result || currentTeams.length === 0) {
+        alert("Please select a result and generate teams.");
+        return;
+      }
+
+      const { team1, team2 } = currentTeams.shift();
+
+      const team1points = result === "team1" ? 2 : result === "draw" ? 1 : 0;
+      const team2points = result === "team2" ? 2 : result === "draw" ? 1 : 0;
+
+      team1.forEach(p => {
+        standings[p.id].points += team1points;
+        standings[p.id].matches++;
+      });
+      team2.forEach(p => {
+        standings[p.id].points += team2points;
+        standings[p.id].matches++;
+      });
+
+      updateStandings();
+      saveData();
+      generateTeams();
+      document.getElementById("matchResult").value = "";
+      alert("Result saved! 🙌");
+    }
+  </script>
+</body>
+</html>
