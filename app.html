@@ -77,15 +77,13 @@
     const auth = firebase.auth();
     const db = firebase.database();
 
-    // Protect page and set up logout
     window.onload = function() {
-      // Route protection
       auth.onAuthStateChanged(user => {
         if (!user) {
           window.location.href = 'login.html';
         }
       });
-      // Logout button
+
       document.getElementById("logoutBtn").addEventListener("click", () => {
         auth.signOut().then(() => window.location.href = "login.html");
       });
@@ -98,32 +96,34 @@
     let playerResults = {};
     let roundNumber = 0;
 
+    // ✅ FIXED loadTournament that waits for matches before updateStats()
     function loadTournament() {
       const id = document.getElementById("tournamentInput").value.trim();
-      if (!id) return alert("Skriv ett turnerings-ID.");
+      if (!id) return alert("Skriv ett turnerings-ID");
       currentTournamentId = id;
       document.getElementById("tournamentStatus").textContent = "Laddar " + id + "...";
       const base = db.ref("tournaments/" + currentTournamentId);
 
-      base.child("players").once("value").then(snap => {
-        players = snap.val() || [];
+      Promise.all([
+        base.child("players").once("value"),
+        base.child("matches").once("value")
+      ]).then(([playersSnap, matchesSnap]) => {
+        players = playersSnap.val() || [];
+        matchHistory = matchesSnap.val() || [];
+        roundNumber = matchHistory.length;
+
         players.forEach(p => {
           p.matches = p.matches || 0;
           p.wins = p.wins || 0;
           p.losses = p.losses || 0;
           p.draws = p.draws || 0;
         });
+
         renderPlayers();
         updateStats();
+        document.getElementById("tournamentStatus").textContent = "✅ Aktiv turnering: " + id;
+        clearCurrentRound();
       });
-
-      base.child("matches").once("value").then(snap => {
-        matchHistory = snap.val() || [];
-        roundNumber = matchHistory.length;
-      });
-
-      document.getElementById("tournamentStatus").textContent = "✅ Aktiv turnering: " + id;
-      clearCurrentRound();
     }
 
     function savePlayers() {
